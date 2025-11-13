@@ -1,0 +1,9 @@
+.env
+
+*.pt
+*.npy
+*.pkl
+*.mp4
+*.xml
+
+z_trash/
