@@ -16,6 +16,9 @@ load_dotenv(env_path)          # .env에서 로드
 
 RTSP_URL = os.getenv('RTSP_URL')
 
+# cam 사용시
+RSTP_URL = 0
+
 # ================== 사용자 설정 ==================
 CKPT_PATH = "lstm_multilabel_05.pt"        # 학습 시 저장한 ckpt 파일(.pt)
 META_PATH = None                   # ckpt에 meta가 없을 때만 사용(선택)
