@@ -7,3 +7,4 @@
 *.xml
 
 z_trash/
+__pycache__/

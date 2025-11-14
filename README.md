@@ -67,6 +67,8 @@ uvicorn c_server:app --host 0.0.0.0 --port 8000 --reload
    **index.html**
 
 ```
+lstm_multilabel_05.pt 필요
+.env 필요 (.example 참고)
 uvicorn stream_lstm_app:app --host 0.0.0.0 --port 8000 --reload
 브라우저로 localhost:8000 접속
 ```
