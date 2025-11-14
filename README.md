@@ -68,3 +68,5 @@ uvicorn c_server:app --host 0.0.0.0 --port 8000 --reload
 
 ```
 uvicorn stream_lstm_app:app --host 0.0.0.0 --port 8000 --reload
+브라우저로 localhost:8000 접속
+```
