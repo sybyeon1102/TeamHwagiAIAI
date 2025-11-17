@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Final
 
 from pydantic import Field
@@ -26,9 +27,20 @@ class Settings(BaseSettings):
     app_version: str = APP_VERSION_DEFAULT
     app_description: str = APP_DESCRIPTION_DEFAULT
 
+    model_checkpoint_path: Path = Field(
+        ...,
+        description=(
+            "LSTM 모델 체크포인트(.pt) 파일 경로.\n"
+            "Path to the LSTM model checkpoint (.pt) file."
+        ),
+    )
+
     environment: str = Field(
         default="local",
-        description="실행 환경(local/dev/prod 등) / Runtime environment (local/dev/prod, etc.)",
+        description=(
+            "실행 환경(local/dev/prod 등) / "
+            "Runtime environment (local/dev/prod, etc.)."
+        ),
     )
     debug: bool = Field(
         default=False,

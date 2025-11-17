@@ -325,3 +325,124 @@ LSTM 기반 멀티라벨 분류 모델을 학습하고,
          --lr 0.002 \
          --device auto \
          --save /models/lstm_multilabel.pt
+
+## 6. LSTM 추론(inference) 단독 실행
+
+이 섹션은 학습이 끝난 LSTM 체크포인트를 사용해, backend 없이도 단일 시퀀스에 대해 추론을 수행하는 방법을 정리한다.
+
+### 6-1. 엔트리 이름과 기본 사용법
+
+`modeling` 서브 프로젝트의 `pyproject.toml` 에는 다음과 같은 엔트리가 정의되어 있다:
+
+    [project.scripts]
+    run-inference-lstm = "modeling.inference.inference_lstm:main"
+
+따라서 `modeling/` 디렉터리 기준으로 LSTM 추론을 실행할 수 있다:
+
+    # modeling/ 디렉터리에서 실행
+    # Run from the modeling/ directory
+    uv run run-inference-lstm \
+      --checkpoint /models/lstm_multilabel.pt \
+      --input-json /data/sample_frames.json \
+      --device auto \
+      --pretty
+
+옵션 설명:
+
+- `--checkpoint, -c`
+  - 학습이 완료된 LSTM 체크포인트(.pt) 파일 경로
+- `--input-json, -i`
+  - 하나의 시퀀스(윈도우)에 대한 프레임들이 들어 있는 JSON 파일 경로
+- `--device, -d`
+  - `auto` / `cpu` / `cuda` 중 하나를 선택 (`auto` 기본)
+- `--pretty`
+  - 결과 JSON을 사람이 읽기 좋은 형태로 들여쓰기해서 출력
+
+### 6-2. 입력 JSON 형식
+
+입력 JSON은 하나의 시퀀스(윈도우)에 대한 프레임 리스트를 표현한다.
+
+두 가지 최상위 형식을 지원한다:
+
+1. 최상위가 바로 프레임 리스트인 경우
+
+       [
+         [0.12, 1.34, -0.56, 0.01],
+         [0.10, 1.30, -0.53, 0.02],
+         [0.08, 1.27, -0.50, 0.03]
+       ]
+
+2. "frames" 키 아래에 프레임 리스트가 있는 경우
+
+       {
+         "frames": [
+           [0.12, 1.34, -0.56, 0.01],
+           [0.10, 1.30, -0.53, 0.02],
+           [0.08, 1.27, -0.50, 0.03]
+         ]
+       }
+
+각 프레임은 `features` 벡터에 대응되며,
+전처리/학습 단계에서 사용한 feature 차원(F)과 동일한 길이를 가져야 한다.
+
+이 형식은 backend의 `BehaviorAnalyzeRequest` 와도 대응되며,
+backend 에서는 다음과 같은 구조를 사용한다:
+
+    {
+      "frames": [
+        {
+          "index": 0,
+          "features": [0.12, 1.34, -0.56, 0.01]
+        },
+        {
+          "index": 1,
+          "features": [0.10, 1.30, -0.53, 0.02]
+        }
+      ]
+    }
+
+여기서 `index` 필드는 선택(optional)이며,
+이 README에서 사용하는 CLI 입력은 `features` 부분만을 직접 리스트로 전달하는 축약형이다.
+
+### 6-3. 출력 JSON 형식
+
+성공적으로 추론이 완료되면, 다음과 같은 JSON이 표준 출력(stdout)에 출력된다.
+
+    {
+      "is_anomaly": true,
+      "normal_score": 0.23,
+      "anomaly_score": 0.77,
+      "events": [
+        "event_walk",
+        "event_run",
+        "event_jump"
+      ],
+      "scores": [
+        0.12,
+        0.77,
+        0.05
+      ],
+      "thresholds": [
+        0.5,
+        0.6,
+        0.4
+      ]
+    }
+
+필드 의미:
+
+- `is_anomaly`
+  - 하나라도 임계값을 넘는 이벤트가 있으면 `true`
+- `normal_score`
+  - 이상 점수의 최대값을 기준으로 계산된 “정상일 가능성” 점수 (대략 0~1 범위)
+- `anomaly_score`
+  - 전체 이벤트 중 최대 sigmoid 점수 (0~1)
+- `events`
+  - 클래스(이벤트) 이름 리스트. `scores` / `thresholds`와 인덱스로 정렬.
+- `scores`
+  - 각 이벤트에 대한 sigmoid 점수 리스트.
+- `thresholds`
+  - 각 이벤트에 대한 의사결정 임계값 리스트.
+
+backend의 `/behavior/analyze` 엔드포인트는 내부적으로 이와 동일한 LSTM 추론 레이어를 사용하며,
+HTTP 응답에서는 `BehaviorAnalyzeResponse` 모델을 통해 동일한 정보(`is_anomaly`, `normal_score`, `anomaly_score`, `events`, `scores`, `thresholds`)를 전달할 수 있다.

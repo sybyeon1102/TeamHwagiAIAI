@@ -5,144 +5,148 @@
 모든 실행 예시는 **이 디렉터리(`backend/`) 기준**으로 작성되어 있다.
 
 - HTTP API 기반 헬스 체크 (`/health`)
-- 행동 분석 엔드포인트 (`/behavior`)
+- 포즈 기반 행동 분석 엔드포인트 (`/behavior/analyze`)
 - 이벤트 로깅 엔드포인트 (`/event`)
 
-현재 1차 라운드에서는 **서버 구조/레이아웃을 정리한 상태**이며,
-`/behavior`의 추론 로직은 **더미 구현**으로 되어 있고
-나중에 `modeling` 서브 프로젝트의 실제 LSTM 추론 코드로 교체될 예정이다.
+모델 추론은 `modeling` 서브 프로젝트의 **LSTM 기반 inference 레이어**
+(`modeling.inference.inference_lstm`)를 사용하며,
+추론 오류/모델 상태는 `project_core.result` 기반의 Result/에러 타입으로 표현된다.
 
 ---
 
-## 0. 환경 구축 (uv)
+## 0. 환경 구축 (uv + pyproject)
 
-이 서브 프로젝트는 `uv` 기반으로 Python 환경을 관리한다.
-Python 버전은 프로젝트 전역과 동일하게 **3.12.x**를 사용한다.
+`backend` 서브 프로젝트는 **pyproject.toml + uv**를 사용해
+Python 환경과 의존성을 관리한다.
 
-### 0-1. 기본 환경 구축
+### 0-1. Python 버전 및 의존성
 
-`backend/pyproject.toml` 이 있는 디렉터리에서:
+- Python: `>= 3.12`
+- 주요 의존성:
+  - `fastapi[standard]`
+  - `pydantic-settings`
+  - **로컬 서브 프로젝트**:
+    - `project-core` (core/python)
+    - `modeling`
+
+### 0-2. uv 환경 동기화
 
 ```bash
 cd backend
 
-# 의존성 설치 / Install dependencies
+# 의존성 설치 / Sync dependencies
 uv sync
 ```
 
-`pyproject.toml`에는 다음과 같은 의존성이 포함되어 있다:
+---
 
-- `fastapi[standard]` : FastAPI + uvicorn 실행 환경
-- `pydantic`, `pydantic-settings` : 설정/IO 모델
-- `project-core` : 공용 Result 타입 및 유틸
-- `modeling` : (추후) LSTM 추론 로직을 사용할 서브 프로젝트
-  *(현재는 전처리/훈련만 구현되어 있으며, 추론 API는 아직 연결되지 않음)*
+## 1. 설정(.env) 및 Settings
+
+backend 설정은 `app.config.Settings` 클래스로 관리되며,
+`pydantic-settings` 를 사용해 **환경 변수 및 `.env`** 에서 값을 읽어온다.
+
+```python
+# backend/app/config.py (발췌)
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="BACKEND_",
+        extra="ignore",
+    )
+
+    app_title: str = APP_TITLE_DEFAULT
+    app_version: str = APP_VERSION_DEFAULT
+    app_description: str = APP_DESCRIPTION_DEFAULT
+
+    model_checkpoint_path: Path = Field(
+        ...,
+        description=(
+            "LSTM 모델 체크포인트(.pt) 파일 경로.\n"
+            "Path to the LSTM model checkpoint (.pt) file."
+        ),
+    )
+
+    environment: str = Field(default="local", ...)
+    debug: bool = Field(default=False, ...)
+```
+
+### 1-1. `.env` 위치
+
+- backend용 `.env` 파일은 **`backend/.env`** 에 둔다.
+- `env_prefix="BACKEND_"` 로 설정되어 있으므로,
+  예를 들면 다음과 같이 작성한다:
+
+```env
+# backend/.env
+
+BACKEND_MODEL_CHECKPOINT_PATH=/abs/path/to/lstm_checkpoint.pt
+BACKEND_APP_TITLE=Behavior Inference API
+BACKEND_APP_VERSION=0.1.0
+BACKEND_ENVIRONMENT=local
+BACKEND_DEBUG=true
+```
 
 ---
 
-## 1. 개발 서버 실행
+## 2. 디렉터리 구조
 
-### 1-1. 현재 backend 서버 실행 (FastAPI CLI)
-
-FastAPI 공식 CLI와 `uv`를 사용해 개발 서버를 실행한다.
-우리 프로젝트에서는 **`python` / `uvicorn` 명령어 대신**
-**`uv run fastapi`** 형식을 기본으로 사용한다.
-
-```bash
-cd backend
-
-# FastAPI 개발 서버 실행 / Run FastAPI development server
-uv run fastapi dev
-```
-
-- 기본적으로 `app/main.py`의 `app` 변수를 자동으로 찾는다.
-- 기본 포트는 `8000`이며, 필요하면 `--port` 옵션으로 변경할 수 있다.
-
-예:
-
-```bash
-uv run fastapi dev --host 0.0.0.0 --port 8000
-```
-
-서버가 뜬 후 브라우저에서 다음 주소로 접속할 수 있다:
-
-- 기본 문서: `http://localhost:8000/docs`
-- 헬스 체크: `http://localhost:8000/health/`
-
----
-
-### 1-2. (참고) 기존 레거시 서버 명령어와의 대응
-
-원래 루트 `README.md`에는 다음과 같은 명령어가 있었다:
-
-```bash
-uvicorn c_server:app --host 0.0.0.0 --port 8000 --reload
-```
-
-이 명령어는 레거시 `c_server.py` 기반 FastAPI 서버를 직접 띄우는 방식이었다.
-현재 구조에서는 **이 역할을 `backend` 서브 프로젝트가 대체**하며,
-위 명령어는 다음과 같이 대응된다고 볼 수 있다:
-
-```bash
-# 레거시:
-# uvicorn c_server:app --host 0.0.0.0 --port 8000 --reload
-
-# 현재:
-cd backend
-uv sync
-uv run fastapi dev --host 0.0.0.0 --port 8000
-```
-
-마찬가지로 테스트용 앱이었던:
-
-```bash
-uvicorn stream_lstm_app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-은 앞으로 `backend` + (추후) `frontend` 조합으로 대체될 예정이다.
-지금 시점에서는 `backend`만 독립적으로 실행 가능한 상태이다.
-
----
-
-## 2. 디렉터리 구조 (backend/app)
-
-`backend/app` 패키지는 다음과 같이 구성된다:
+요약된 구조는 다음과 같다:
 
 ```text
 backend/
   pyproject.toml
+  README.md
+  .env                # (선택) Settings용 환경 변수 파일
+
   app/
-    __init__.py
-    main.py          # FastAPI 엔트리포인트 (create_app / app)
-    config.py        # 설정/환경 로딩 (pydantic-settings)
-    dependencies.py  # FastAPI Depends용 공용 의존성
-    errors.py        # 도메인 에러 타입 + HTTP 매핑
+    main.py           # FastAPI 앱 생성, 라우터 등록
+    config.py         # Settings (pydantic-settings)
+    dependencies.py   # FastAPI 의존성 주입 helper
+    errors.py         # InferenceError, InferenceResult, HTTP 매핑
     models/
-      __init__.py
-      model_io_behavior.py  # 행동 분석 요청/응답 IO 모델
-      model_io_event.py     # 이벤트 로깅 요청/응답 IO 모델
-    services/
-      __init__.py
-      service_behavior.py   # 행동 분석 도메인 서비스 (Result 기반)
-      service_event.py      # 이벤트 로깅 도메인 서비스
+      model_io_behavior.py  # /behavior 입출력 모델
+      model_io_event.py     # /event 입출력 모델
     routers/
-      __init__.py
-      router_health.py      # /health 헬스 체크
-      router_behavior.py    # /behavior 행동 분석 API
-      router_event.py       # /event 이벤트 로깅 API
-    internal/
-      __init__.py
-      internal_admin.py     # (옵션) 내부/관리자용 엔드포인트 자리
+      router_health.py      # /health
+      router_behavior.py    # /behavior/analyze
+      router_event.py       # /event
+    services/
+      service_behavior.py   # 모델 추론 호출 (modeling.inference)
+      service_event.py      # 이벤트 로깅 (현재는 더미 구현)
 ```
 
 ---
 
-## 3. 주요 엔드포인트 개요
+## 3. 서버 실행 방법
 
-### 3-1. 헬스 체크: `/health/`
+### 3-1. 개발용 실행 (uv + fastapi)
 
-- 메서드: `GET /health/`
-- 반환 예시:
+현재는 별도 엔트리 스크립트를 두기보다는,
+`uv run fastapi ...` 형식으로 개발용 서버를 실행한다.
+
+```bash
+cd backend
+
+# 기본 개발 실행 예시
+uv run fastapi app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+나중에는 `pyproject.toml` 의 `[project.scripts]` 에
+예를 들어 `run-backend-dev = "app.main:app"` 형태로
+스크립트 엔트리를 등록해 둘 수 있다.
+([INV-061] “uv run + 엔트리” 철학을 따르기 위함)
+
+### 3-2. 기본 헬스 체크
+
+서버가 뜬 뒤, 다음과 같이 헬스 체크를 할 수 있다:
+
+```bash
+# 기본 헬스 체크
+curl http://localhost:8000/health/
+```
+
+응답 예시:
 
 ```json
 {
@@ -152,65 +156,130 @@ backend/
 }
 ```
 
-서버 상태 및 환경 정보를 단순히 확인하기 위한 엔드포인트이다.
-
 ---
 
-### 3-2. 행동 분석: `/behavior/`
+## 4. API 개요
 
-- 메서드: `POST /behavior/`
-- 요청 바디: `BehaviorAnalyzeRequest`
+### 4-1. 헬스 체크 `/health/`
+
+- **메서드**: `GET /health/`
+- **목적**:
+  - 서버가 살아 있는지 확인.
+  - 현재 앱 버전, environment 확인.
+
+응답 예:
 
 ```json
 {
+  "status": "ok",
+  "app_version": "0.1.0",
+  "environment": "local"
+}
+```
+
+### 4-2. 행동 분석 `/behavior/analyze`
+
+포즈 기반 프레임 시퀀스를 입력으로 받아,
+LSTM 기반 이상/정상 판단을 수행한다.
+
+- **메서드**: `POST /behavior/analyze`
+- **Request Body**: `BehaviorAnalyzeRequest`
+- **Response Body**: `BehaviorAnalyzeResponse`
+
+#### Request 모델
+
+```jsonc
+{
   "frames": [
     {
-      "features": [0.1, 0.2, 0.3]
+      "index": 0,
+      "features": [0.12, 1.34, -0.56, 0.01]
     },
     {
-      "features": [0.0, 0.5, 0.9]
+      "index": 1,
+      "features": [0.10, 1.30, -0.53, 0.02]
     }
   ]
 }
 ```
 
-- 응답 바디: `BehaviorAnalyzeResponse`
+- `frames`: 시간순으로 정렬된 포즈 프레임 배열
+- 각 `features`: 전처리/학습 단계에서 사용한 feature 벡터와 동일한 차원(F)을 가져야 한다.
+- `index` 필드는 선택(optional)이며, 단순 디버깅용이다.
 
-```json
+#### Response 모델
+
+```jsonc
 {
-  "is_anomaly": false,
-  "normal_score": 0.9,
-  "anomaly_score": 0.1
+  "is_anomaly": true,
+  "normal_score": 0.23,
+  "anomaly_score": 0.77,
+  "events": [
+    "event_walk",
+    "event_run",
+    "event_jump"
+  ],
+  "scores": [
+    0.12,
+    0.77,
+    0.05
+  ],
+  "thresholds": [
+    0.5,
+    0.6,
+    0.4
+  ]
 }
 ```
 
-현재는 `service_behavior.py`에서 **더미 점수**를 반환하며,
-`normal_score` / `anomaly_score` 값은 실제 LSTM 추론과 무관하다.
-나중에 `modeling` 서브 프로젝트의 추론 모듈이 준비되면,
-이 엔드포인트의 내부 구현만 실제 추론 호출로 교체할 예정이다.
+- `is_anomaly`
+  - 하나라도 임계값을 넘는 이벤트가 있으면 `true`.
+- `normal_score`
+  - `anomaly_score` (이벤트별 점수 중 최대값)을 기준으로 계산된 정상 점수 (대략 0~1).
+- `anomaly_score`
+  - 모든 이벤트 중 최대 sigmoid 점수 (0~1).
+- `events`
+  - 클래스/이벤트 이름 리스트. `scores`, `thresholds`와 인덱스로 정렬.
+- `scores`
+  - 각 이벤트별 sigmoid 점수 리스트.
+- `thresholds`
+  - 각 이벤트별 의사결정 임계값 리스트.
 
----
+에러가 발생하면, 내부 도메인 에러(`InferenceError`)가
+`app.errors.map_inference_error_to_http_exception()` 을 통해
+적절한 HTTP 상태 코드 및 메시지로 변환된다.
 
-### 3-3. 이벤트 로깅: `/event/`
+### 4-3. 이벤트 로깅 `/event/`
 
-- 메서드: `POST /event/`
-- 요청 바디: `EventLogRequest`
+사용자의 행동/세션 등에 대한 이벤트를 기록하기 위한 엔드포인트이다.
 
-```json
+- **메서드**: `POST /event/`
+- **Request Body**: `EventLogRequest`
+- **Response Body**: `EventLogResponse`
+
+#### Request 모델
+
+```jsonc
 {
   "event": {
-    "timestamp": "2025-11-17T12:34:56.789Z",
-    "event_type": "HEARTBEAT",
+    "timestamp": "2025-11-17T12:34:56Z",
+    "event_type": "behavior_analyzed",
     "session_id": "session-123",
-    "user_id": "user-456",
-    "data": {
-      "note": "optional extra metadata"
+    "user_id": "user-42",
+    "payload": {
+      "some": "json",
+      "extra": 123
     }
   }
 }
 ```
 
-- 응답 바디: `EventLogResponse`
+- `event_type`: 이벤트 종류(자유 형식 문자열)
+- `timestamp`: ISO 8601 형식의 시각
+- `session_id`, `user_id`: 선택(optional)
+- `payload`: 추가 메타데이터를 담는 임의의 JSON 객체
+
+#### Response 모델
 
 ```json
 {
@@ -219,53 +288,73 @@ backend/
 }
 ```
 
-현재는 실제 저장소(DB, 파일, 메시지 큐 등)에는 기록하지 않고,
-`service_event.py`에서 **더미 event_id**와 `success=true`만 반환한다.
-향후 구현에서 DB 또는 로그 스토리지와 연동할 예정이며,
-그때에도 HTTP 스펙은 최대한 유지하는 것을 목표로 한다.
+현재 구현은 **데모용 더미 구현**으로,
+`event_id` 를 고정 값 `"dummy-event-id"` 로 반환하며
+실제 저장소(DB, 메시지 큐 등)에 기록하지는 않는다.
+(향후 `service_event.py` 에서 실제 저장소로 확장 가능)
 
 ---
 
-## 4. 전형적인 개발 워크플로 예시
+## 5. modeling.inference 연동 구조
 
-1. **backend 환경 구축**
+### 5-1. LSTM inference 컨텍스트 로딩
 
-   ```bash
-   cd backend
-   uv sync
-   ```
+`service_behavior._get_lstm_context()` 는
+`Settings.model_checkpoint_path`를 기반으로 LSTM 모델을 로드한다:
 
-2. **개발 서버 실행**
+- checkpoint에서:
+  - `state_dict` (LSTM 모델 파라미터)
+  - `meta` (`events`, `win`, `norm_mean`, `norm_std` 등 전처리 메타데이터)
+  - `thresholds` (클래스별 임계값; 없으면 0.5로 채움)
+- 를 읽어서 `LstmInferenceContext` 를 생성한다.
 
-   ```bash
-   uv run fastapi dev --host 0.0.0.0 --port 8000
-   ```
+이 컨텍스트는 `functools.lru_cache` 로 캐시되어,
+서버가 떠 있는 동안 같은 checkpoint를 재사용한다.
 
-3. **헬스 체크 확인**
+### 5-2. inference 호출 플로우
 
-   - 브라우저 또는 HTTP 클라이언트에서:
+1. `/behavior/analyze` → `router_behavior.analyze_behavior_endpoint()`
+2. `service_behavior.analyze_behavior(request)` 호출
+3. 내부 플로우:
+   - `_get_lstm_context()` 로 모델/메타 로드
+   - `BehaviorAnalyzeRequest.frames` → `list[list[float]]` 로 변환
+   - `run_inference_lstm_single(context, frames)` 호출
+   - 결과(`LstmInferenceOutput`)를 `BehaviorAnalyzeResponse`로 매핑
+   - `Ok(response)` / `Err(InferenceError)` 형태로 반환
+4. 라우터에서 `Ok`/`Err`를 패턴 매칭(`match`)하여
+   - 성공 → HTTP 200 + `BehaviorAnalyzeResponse`
+   - 실패 → `InferenceError` → `HTTPException` 변환 후 에러 응답
 
-     - `GET http://localhost:8000/health/`
+### 5-3. modeling README와의 대응
 
-4. **행동 분석 테스트**
+`modeling/README.md` 의 **6. LSTM 추론(inference) 단독 실행** 섹션에서
+설명하는 CLI (`run-inference-lstm`)와
+backend의 `/behavior/analyze` 엔드포인트는
+**동일한 inference 레이어**를 사용한다.
 
-   - `POST http://localhost:8000/behavior/`
-     위 예시 JSON 바디를 전송하여 응답 구조를 확인한다.
+- CLI:
+  - `uv run run-inference-lstm --checkpoint ... --input-json ...`
+- Backend:
+  - `POST /behavior/analyze` + `BehaviorAnalyzeRequest` JSON
 
-5. **이벤트 로깅 테스트**
-
-   - `POST http://localhost:8000/event/`
-     `EventLogRequest` 예시 바디를 전송해 `success` / `event_id` 응답을 확인한다.
+입력/출력 포맷은 서로 호환되도록 설계되어 있어,
+동일한 시퀀스 JSON을 CLI와 HTTP에 모두 넣고 결과를 비교할 수 있다.
 
 ---
 
-## 5. 앞으로의 계획 (요약)
+## 6. 앞으로의 작업 아이디어
 
-- `modeling` 서브 프로젝트의 LSTM 추론 로직을
-  `modeling.inference` 모듈 형태로 정리한 뒤,
-- `service_behavior.py`의 더미 구현을
-  해당 추론 모듈 호출로 교체한다.
-- 레거시 `c_server.py` / `c_realtime_client.py`의 역할은
-  - **HTTP/API 부분**: `backend` / `frontend`로,
-  - **추론/모델 부분**: `modeling`으로
-  천천히 분리·이전하는 것을 목표로 한다.
+backend 1차 라운드(레이아웃 정리 + LSTM 연동)는 완료된 상태이며,
+향후에는 다음과 같은 작업을 고려할 수 있다:
+
+- `/health` 에 **모델 로드 상태** 추가
+  - `_get_lstm_context()` 를 호출해,
+    모델이 정상 로드되지 않은 경우 `status: "degraded"` 등으로 표현.
+- `service_event.py` 를 실제 저장소(DB/메시지 큐/파일 등)에 연결
+- 공통 에러/응답 포맷 정리
+  - 예: `{ "code": "...", "message": "..." }` 통일
+- `[project.scripts]` 에 backend 서버 실행 엔트리 추가
+  - 예: `run-backend-dev = "app.main:app"`
+    → `uv run run-backend-dev` 형식으로 실행.
+- pytest 기반의 간단한 엔드투엔드 테스트
+  - `/health` / `/behavior/analyze` 에 대한 최소 검증.

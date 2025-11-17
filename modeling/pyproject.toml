@@ -39,6 +39,7 @@ cu121 = [
 build-dataset-anomaly = "modeling.preprocessing.dataset_anomaly:main"
 build-dataset-normal = "modeling.preprocessing.dataset_normal:main"
 train-lstm-model = "modeling.training.trainer_lstm:main"
+run-lstm-inference = "modeling.inference.inference_lstm:main"
 
 [build-system]
 requires = ["uv_build>=0.9.9,<0.10.0"]
