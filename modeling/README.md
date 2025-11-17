@@ -1,6 +1,6 @@
 # Modeling 서브 프로젝트
 
-이 디렉터리는 **이상/정상 행동 데이터 전처리 + LSTM 모델 학습**을 담당하는
+이 디렉터리는 **정상/이상 행동 데이터 전처리 + LSTM 모델 학습**을 담당하는
 `modeling` 서브 프로젝트이다.
 모든 실행 예시는 **이 디렉터리(`modeling/`) 기준**으로 작성되어 있다.
 
@@ -24,20 +24,20 @@ PyTorch는 **optional extra**를 통해 CPU / CUDA 버전을 선택해서 설치
 - `cu121`
 
 > 실제 extra 이름은 pyproject 설정에 따라 약간 다를 수 있다
-> (예: `cuda-12.1` 등).
+> (예: cuda-12.1 등).
 > 아래 내용은 **개념적으로 “CUDA 12.1 / 12.4 / … / 13.0용 extra”**를 의미한다.
 
 ### 0-2. CUDA 버전 선택 규칙
 
 사용자 시스템에 설치된 CUDA 런타임/드라이버 버전이 **V**라고 할 때:
 
-- **반드시 “지원 버전 중, V 이하의 버전”을 골라야 한다.**
+- 반드시 “지원 버전 중, V 이하의 버전”을 골라야 한다.
 - 예를 들어,
-  - 시스템 CUDA가 **12.6**이라면, 아래 중에서 선택 가능:
+  - 시스템 CUDA가 12.6이라면, 아래 중에서 선택 가능:
     - `cu126`
     - `cu124`
     - `cu121`
-  - 시스템 CUDA가 **13.0**이라면, 아래 중에서 선택 가능:
+  - 시스템 CUDA가 13.0이라면, 아래 중에서 선택 가능:
     - `cu130`
     - `cu129`
     - `cu128`
@@ -66,17 +66,19 @@ CUDA 버전을 모르면 **일단 `cpu` extra로 시작**하는 것을 권장한
   - 지원:
     - `cpu`
     - `cu121`, `cu124`, `cu126`, `cu128`, `cu130`
-  - **미지원:**
+  - 미지원(가정):
     - `cu129` (윈도우용 wheel이 없다고 가정)
-  - 따라서 윈도우에서는:
-    - CPU만 쓰려면 → `uv sync --extra cpu`
-    - CUDA를 쓰려면 → `cu121 / 124 / 126 / 128 / 130` 중에서
-      **본인 시스템 CUDA 버전 이하**를 선택.
+
+  따라서 윈도우에서는:
+
+  - CPU만 쓰려면 → `uv sync --extra cpu`
+  - CUDA를 쓰려면 → `cu121 / 124 / 126 / 128 / 130` 중에서
+    본인 시스템 CUDA 버전 이하를 선택.
 
 - **macOS**
   - 지원:
     - `cpu` 만 지원
-  - **모든 `cu...` optional은 미지원**
+  - 모든 `cu...` optional은 미지원
     → 시도 시 wheel이 없어서 설치가 실패하는 것이 정상이다.
 
 ### 0-4. 기본적인 환경 구축 예시
@@ -121,12 +123,12 @@ CUDA 버전을 모르면 **일단 `cpu` extra로 시작**하는 것을 권장한
          uv sync --extra cpu
 
    - `cu121` 등 CUDA optional을 선택하면
-     → **해당 플랫폼용 wheel이 없어서 설치 실패**가 나는 것이 정상이다.
+     → 해당 플랫폼용 wheel이 없어서 설치 실패가 나는 것이 정상이다.
 
 ### 0-5. 지원하지 않는 조합을 선택했을 때
 
-- 예: **macOS에서** `uv sync --extra cu126`
-- 예: **Windows에서** `uv sync --extra cu129` (지원하지 않는다고 가정)
+- 예: macOS에서 `uv sync --extra cu126`
+- 예: Windows에서 `uv sync --extra cu129` (지원하지 않는다고 가정)
 
 이런 경우 `uv`는:
 
@@ -143,58 +145,87 @@ CUDA 버전을 모르면 **일단 `cpu` extra로 시작**하는 것을 권장한
 `pyproject.toml`의 `[project.scripts]`에 다음 엔트리가 등록되어 있다:
 
     [project.scripts]
-    build-dataset-anomaly = "modeling.preprocessing.dataset_anomaly:main"
     build-dataset-normal  = "modeling.preprocessing.dataset_normal:main"
+    build-dataset-anomaly = "modeling.preprocessing.dataset_anomaly:main"
     train-lstm-model      = "modeling.training.trainer_lstm:main"
 
 따라서 uv 환경에서 다음과 같이 실행한다:
 
-- 이상 행동 데이터셋: `uv run build-dataset-anomaly ...`
 - 정상 행동 데이터셋: `uv run build-dataset-normal ...`
+- 이상 행동 데이터셋: `uv run build-dataset-anomaly ...`
 - LSTM 학습: `uv run train-lstm-model ...`
 
 ---
 
-## 2. 이상 행동 데이터셋 생성
+## 2. 정상(구매/일상) 행동 데이터셋 생성
+
+`build-dataset-normal` (→ `modeling.preprocessing.dataset_normal:main`)
+
+CVAT XML + 영상(.mp4)을 이용해 **정상 행동(normal / purchase / regular)용 LSTM 데이터셋**
+`X.npy`, `Y.npy`, `meta.json`을 생성한다.
+
+### 2-1. 기본 사용법
+
+    uv run build-dataset-normal \
+      --video-root /path/to/normal/videos \
+      --xml-root   /path/to/normal/xmls \
+      --out-dir    /path/to/out/normal_lstm
+
+### 2-2. 전체 옵션
+
+    uv run build-dataset-normal --help
+
+옵션 의미와 기본값은 이상 행동용과 동일하다:
+
+- `--video-root` : 입력 영상 루트 디렉터리
+  root directory containing input videos
+- `--xml-root` : CVAT XML 루트 디렉터리
+  root directory containing CVAT XML annotations
+- `--out-dir` : 출력 디렉터리 (X/Y/meta 저장)
+  output directory for X.npy / Y.npy / meta.json
+- `--window-size` / `--stride` / `--overlap`
+- `--resize-w`
+- `--model-complexity`
+
+차이점은 내부에서 사용하는 **이벤트 라벨 셋**과
+`moving` 이벤트에 대한 구간 처리 로직(정상 행동 전용 규칙)이 다르다는 점이다.
+
+---
+
+## 3. 이상 행동 데이터셋 생성
+
 `build-dataset-anomaly` (→ `modeling.preprocessing.dataset_anomaly:main`)
 
 CVAT XML + 영상(.mp4)을 이용해 **이상 행동(anomaly)용 LSTM 데이터셋**
 `X.npy`, `Y.npy`, `meta.json`을 생성한다.
 
-### 2-1. 기본 사용법
+### 3-1. 기본 사용법
 
     uv run build-dataset-anomaly \
       --video-root /path/to/anomaly/videos \
       --xml-root   /path/to/anomaly/xmls \
       --out-dir    /path/to/out/anomaly_lstm
 
-### 2-2. 전체 옵션
+### 3-2. 전체 옵션
 
     uv run build-dataset-anomaly --help
 
-    --video-root PATH        영상(.mp4)들이 들어 있는 루트 디렉터리
+- `--video-root PATH`        영상(.mp4)들이 들어 있는 루트 디렉터리
                              root directory containing input videos
-
-    --xml-root PATH          CVAT XML 어노테이션 파일들이 들어 있는 루트 디렉터리
+- `--xml-root PATH`          CVAT XML 어노테이션 파일들이 들어 있는 루트 디렉터리
                              root directory containing CVAT XML annotations
-
-    --out-dir PATH           생성된 X.npy / Y.npy / meta.json을 저장할 디렉터리
+- `--out-dir PATH`           생성된 X.npy / Y.npy / meta.json을 저장할 디렉터리
                              output directory for X.npy / Y.npy / meta.json
-
-    --window-size INT        슬라이딩 윈도우 길이 (프레임 수, 기본값: 16)
+- `--window-size INT`        슬라이딩 윈도우 길이 (프레임 수, 기본값: 16)
                              sliding window length in frames (default: 16)
-
-    --stride INT             슬라이딩 윈도우 이동 간격 (프레임 수, 기본값: 4)
+- `--stride INT`             슬라이딩 윈도우 이동 간격 (프레임 수, 기본값: 4)
                              sliding window stride in frames (default: 4)
-
-    --overlap FLOAT          윈도우와 이벤트 구간의 최소 겹침 비율 (0.0~1.0, 기본값: 0.25)
+- `--overlap FLOAT`          윈도우와 이벤트 구간의 최소 겹침 비율 (0.0~1.0, 기본값: 0.25)
                              minimum overlap ratio between window and event interval
                              (default: 0.25)
-
-    --resize-w INT           영상 가로 리사이즈 크기 (0이면 리사이즈하지 않음, 기본값: 640)
+- `--resize-w INT`           영상 가로 리사이즈 크기 (0이면 리사이즈하지 않음, 기본값: 640)
                              target video width; 0 means no resize (default: 640)
-
-    --model-complexity INT   MediaPipe Pose model_complexity 값 (0, 1, 2 중 하나, 기본값: 0)
+- `--model-complexity INT`   MediaPipe Pose model_complexity 값 (0, 1, 2 중 하나, 기본값: 0)
                              MediaPipe Pose model_complexity: 0, 1 or 2 (default: 0)
 
 생성 결과:
@@ -205,38 +236,8 @@ CVAT XML + 영상(.mp4)을 이용해 **이상 행동(anomaly)용 LSTM 데이터�
 
 ---
 
-## 3. 정상(구매/일상) 행동 데이터셋 생성
-`build-dataset-normal` (→ `modeling.preprocessing.dataset_normal:main`)
-
-CVAT XML + 영상(.mp4)을 이용해 **정상 행동(normal / purchase / regular)용 LSTM 데이터셋**
-`X.npy`, `Y.npy`, `meta.json`을 생성한다.
-
-### 3-1. 기본 사용법
-
-    uv run build-dataset-normal \
-      --video-root /path/to/normal/videos \
-      --xml-root   /path/to/normal/xmls \
-      --out-dir    /path/to/out/normal_lstm
-
-### 3-2. 전체 옵션
-
-    uv run build-dataset-normal --help
-
-옵션 의미와 기본값은 **이상 행동용과 동일**하다:
-
-- `--video-root` : 입력 영상 루트 디렉터리
-- `--xml-root` : CVAT XML 루트 디렉터리
-- `--out-dir` : 출력 디렉터리 (X/Y/meta 저장)
-- `--window-size` / `--stride` / `--overlap`
-- `--resize-w`
-- `--model-complexity`
-
-차이점은 내부에서 사용하는 **이벤트 라벨 셋**과
-`moving` 이벤트에 대한 구간 처리 로직(정상 행동 전용 규칙)이 다르다는 점이다.
-
----
-
 ## 4. LSTM 모델 학습
+
 `train-lstm-model` (→ `modeling.training.trainer_lstm:main`)
 
 전처리 결과(`X.npy`, `Y.npy`, `meta.json`)가 있는 디렉터리를 입력으로 받아
@@ -259,36 +260,27 @@ LSTM 기반 멀티라벨 분류 모델을 학습하고,
 
     uv run train-lstm-model --help
 
-    --data_dir PATH          전처리 결과(X.npy, Y.npy, meta.json)가 저장된 디렉터리 (필수)
+- `--data_dir PATH`          전처리 결과(X.npy, Y.npy, meta.json)가 저장된 디렉터리 (필수)
                              directory containing X.npy, Y.npy and meta.json
-
-    --epochs INT             학습 epoch 수 (기본값: 40)
+- `--epochs INT`             학습 epoch 수 (기본값: 40)
                              number of training epochs (default: 40)
-
-    --batch INT              배치 크기 (기본값: 64)
+- `--batch INT`              배치 크기 (기본값: 64)
                              batch size (default: 64)
-
-    --lr FLOAT               학습률 learning rate (기본값: 2e-3)
+- `--lr FLOAT`               학습률 learning rate (기본값: 2e-3)
                              learning rate (default: 2e-3)
-
-    --sampler_pos_boost FLOAT
+- `--sampler_pos_boost FLOAT`
                              positive 샘플 가중치 부스트 배율 (기본값: 4.0)
                              multiplier to up-weight positive samples (default: 4.0)
-
-    --val_ratio FLOAT        검증 세트 비율 (0.0~1.0, 기본값: 0.2)
+- `--val_ratio FLOAT`        검증 세트 비율 (0.0~1.0, 기본값: 0.2)
                              validation split ratio (default: 0.2)
-
-    --num_workers INT        DataLoader num_workers (기본값: 2; 0이면 메인 프로세스에서 로딩)
+- `--num_workers INT`        DataLoader num_workers (기본값: 2; 0이면 메인 프로세스에서 로딩)
                              number of worker processes for DataLoader (default: 2)
-
-    --device {auto,cpu,cuda}
+- `--device {auto,cpu,cuda}`
                              학습에 사용할 디바이스 선택 (기본값: auto)
                              auto: cuda 가능 시 cuda, 아니면 cpu
-
-    --seed INT               난수 시드 (기본값: 42)
+- `--seed INT`               난수 시드 (기본값: 42)
                              random seed (default: 42)
-
-    --save PATH              학습된 모델 체크포인트 저장 경로
+- `--save PATH`              학습된 모델 체크포인트 저장 경로
                              (기본값: ./lstm_multilabel.pt)
                              path to save the trained model checkpoint
 
@@ -307,13 +299,7 @@ LSTM 기반 멀티라벨 분류 모델을 학습하고,
 
        uv sync --extra cpu
 
-2. **이상/정상 데이터셋 각각 생성**
-
-       # 이상 행동
-       uv run build-dataset-anomaly \
-         --video-root /data/anomaly/videos \
-         --xml-root   /data/anomaly/xmls \
-         --out-dir    /data/ds_anomaly_lstm
+2. **정상/이상 데이터셋 각각 생성**
 
        # 정상 행동
        uv run build-dataset-normal \
@@ -321,7 +307,13 @@ LSTM 기반 멀티라벨 분류 모델을 학습하고,
          --xml-root   /data/normal/xmls \
          --out-dir    /data/ds_normal_lstm
 
-3. **필요하다면 이상/정상 X/Y를 합쳐서 `ds_lstm_all` 디렉터리 구성**
+       # 이상 행동
+       uv run build-dataset-anomaly \
+         --video-root /data/anomaly/videos \
+         --xml-root   /data/anomaly/xmls \
+         --out-dir    /data/ds_anomaly_lstm
+
+3. **필요하다면 정상/이상 X/Y를 합쳐서 `ds_lstm_all` 디렉터리 구성**
    (간단한 스크립트나 노트북에서 `np.concatenate`로 합치는 식)
 
 4. **합쳐진 데이터셋으로 LSTM 학습**

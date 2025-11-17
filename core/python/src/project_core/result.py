@@ -8,6 +8,11 @@ class Ok[T]:
 
     Wrapper type that represents the successful branch of a Result.
     """
+
+    # match Ok(value) 구문에서 위치 인자로 매칭될 필드 정의
+    # Define which field is used positionally in `match Ok(value)`
+    __match_args__ = ("value",)
+
     value: T
 
 
@@ -18,6 +23,10 @@ class Err[E]:
 
     Wrapper type that represents the error branch of a Result.
     """
+    # match Err(error) 구문에서 위치 인자로 매칭될 필드 정의
+    # Define which field is used positionally in `match Err(error)`
+    __match_args__ = ("error",)
+
     error: E
 
 
