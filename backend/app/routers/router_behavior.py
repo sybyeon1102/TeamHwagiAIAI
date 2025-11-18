@@ -12,31 +12,27 @@ from app.models.model_io_behavior import (
 from app.services.service_behavior import analyze_behavior
 
 
-router = APIRouter(
-    prefix="/behavior",
-    tags=["behavior"],
-)
+# prefix 는 main.py 의 include_router 에서 관리한다.
+# Router-level prefix is managed in main.py via include_router.
+router = APIRouter()
 
 
 @router.post(
     "/analyze",
     response_model=BehaviorAnalyzeResponse,
-    summary="포즈 기반 정상/이상 행동 분석",
+    summary="포즈 기반 정상/이상 행동 분석 / Analyze behavior (normal vs anomaly)",
     description=(
         "포즈 프레임 시퀀스를 입력 받아 LSTM 기반으로 정상/이상 행동을 분석합니다.\n"
         "Analyze a sequence of pose frames using an LSTM-based model "
         "to determine whether the behavior is normal or anomalous."
     ),
 )
-def analyze_behavior_endpoint(
+async def analyze_behavior_endpoint(
     request: BehaviorAnalyzeRequest,
 ) -> BehaviorAnalyzeResponse:
     """
-    BehaviorAnalyzeRequest를 받아 LSTM 추론 레이어를 호출하고,
-    결과를 BehaviorAnalyzeResponse로 반환합니다.
-
-    Takes BehaviorAnalyzeRequest, calls the LSTM inference layer,
-    and returns BehaviorAnalyzeResponse.
+    포즈 기반 정상/이상 행동 분석 엔드포인트.
+    Behavior analysis endpoint based on pose frame sequences.
     """
     result = analyze_behavior(request)
 

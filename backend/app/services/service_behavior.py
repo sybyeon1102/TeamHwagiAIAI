@@ -146,6 +146,11 @@ def analyze_behavior(
         is_anomaly=output.is_anomaly,
         normal_score=output.normal_score,
         anomaly_score=output.anomaly_score,
+        # 아래 필드들은 modeling 레이어의 LstmInferenceOutput에서 그대로 전달합니다.
+        # These fields are passed through from LstmInferenceOutput in the modeling layer.
+        events=output.events,
+        scores=output.scores,
+        thresholds=output.thresholds,
     )
 
     return Ok(response)
